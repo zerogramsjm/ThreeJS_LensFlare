@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - lensflares</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="../main.css">
+		<script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-3.4.1.min.js"></script>
+	</head>
+		<style>
+			html{
+		    position: fixed;
+		    width: 100%;
+		    overscroll-behavior: none;
+		    -webkit-scrollbar { width: 0 !important }
+		}
+			body{
+			    font-family: body;
+			    font-size: 18px;
+			    margin: 0;
+			    width:100%;    
+			    background-color: #fff;
+			    max-width: 100%;
+			    -webkit-scrollbar { width: 0 !important }
+			}
+			.blank_band{
+				z-index: 2;
+				position: fixed;
+				bottom: 0;
+				height: 250px;
+				background-color: #bbbbbb;
+				width: 100vw;
+			}
+		</style>
+	<body>
+
+		<div class="blank_band">
+			
+		</div>
+
+		<div id="info">
+		</div>
+
+		<script type="module">
+			import * as THREE from '../build/three.module.js';
+			import Stats from './jsm/libs/stats.module.js';
+			import { TrackballControls } from './jsm/controls/TrackballControls.js';
+			import { Lensflare, LensflareElement } from './jsm/objects/Lensflare.js';
+			import { TDSLoader } from './jsm/loaders/TDSLoader.js';
+			import { Fire } from './jsm/objects/Fire.js';
+			import { GUI } from './jsm/libs/dat.gui.module.js';
+
+			var loader = new THREE.FontLoader();
+			var counter;
+			var flash_counter;
+			
+			counter = 0;
+
+			var container, stats;
+			var camera, scene, renderer;
+			var controls;
+			var clock = new THREE.Clock();
+			var light_flash;
+			var params = {
+				color1: '#ffffff',
+				color2: '#ffffff',
+				color3: '#ffffff',
+				colorBias: 0,
+				burnRate: 0,
+				diffuse: 1,
+				viscosity: 0.5,
+				expansion: - 0.25,
+				swirl: 35.0,
+				drag: 0.35,
+				airSpeed: 50.0,
+				windX: 2,
+				windY: .09,
+				speed: 0.0,
+				massConservation: false
+			};
+			var mouseX = 0, mouseY = 0;
+			init();
+			animate();
+
+			var windowHalfX = window.innerWidth / 2;
+			var windowHalfY = window.innerHeight / 2;
+			var AmbientLight;
+			var lensflare;
+			var light;
+			var fire;
+
+			var windowHalfX = window.innerWidth / 2;
+			var windowHalfY = window.innerHeight / 2;
+
+			var firegroup = new THREE.Group();
+
+			function init() {
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+				document.addEventListener('touchend', onDocumentTouchEnd, false);
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+				// camera
+				camera = new THREE.PerspectiveCamera( 40, window.innerWidth / window.innerHeight, 1, 15000 );
+				camera.position.z = 1250;
+				controls = new TrackballControls( camera );
+				controls.noRotate = true;
+				// scene
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color().setHSL( 0.51, 0.4, 0.01 );
+				scene.fog = new THREE.Fog( scene.background, 3500, 15000 );
+				// world
+
+				//3ds files dont store normal maps
+				var loader = new THREE.TextureLoader();
+				var loader = new TDSLoader( );
+				
+				var directionalLight = new THREE.DirectionalLight( 0xffffff, 10000 );
+				scene.add( directionalLight );
+				loader.setResourcePath( '/' );
+				loader.load( '../assets/steel.3ds', function ( object ) {
+					object.traverse( function ( child ) {
+					} );
+					object.scale.set(1,1,1);
+					object.position.set(0,0,2000);
+					object.rotation.set(-1.4,0,0);
+					scene.add( object );
+
+				object.traverse( function( node ) {
+				    if( node.material ) {
+				        node.material.opacity = 1;
+				        node.material.transparent = true;
+				    }
+				});
+
+				})
+
+				var plane = new THREE.PlaneBufferGeometry( 20, 20 );
+
+				fire = new Fire( plane, {
+					textureWidth: 512,
+					textureHeight: 512,
+					debug: false
+				} );
+				fire.position.set(102, 265, 1300);
+				fire.scale.set(1,2,1);
+				fire.opacity = 0;
+
+				scene.add( fire );
+				fire.color1.set( 0x808080 );
+				fire.color2.set( 0x222222 );
+				fire.color3.set( 0xFF1493 );
+				fire.windX = 5;
+				fire.windy = .62;
+				fire.airSpeed = 0;
+				fire.viscosity = 0.04;
+				fire.expansion = -0.18;
+				fire.diffuse = 2.43;
+				fire.swirl = 200;
+
+				params.Single = function () {
+					fire.clearSources();
+					fire.addSource( 0.5, 0.1, 0.1, 1.0, 0.0, 1.0 );
+				};
+				params.Single();
+				stats = new Stats();
+				// lights
+				var dirLight = new THREE.DirectionalLight( 0xbbbbbb, 0 );
+				dirLight.position.set( 0, - 1, 0 ).normalize();
+				dirLight.color.setHSL( 0, 0, 0 );
+				scene.add( dirLight );
+				// lensflares
+				var textureLoader = new THREE.TextureLoader();
+				var textureFlare0 = textureLoader.load( '../assets/lensflare/lensflare0.png' );
+				var textureFlare3 = textureLoader.load( '../assets/lensflare/lensflare3.png' );
+				// addLight( 330, 100, 70, 100, 200, 1500 );
+				// addLight( 326, 80, 70, -500, 500, 1500 );
+				addLight( 0, 0, 1, 100, 250, 1300 );
+				function addLight( h, s, l, x, y, z ) {
+					light = new THREE.PointLight( 0xffffff, 6, 5000 );
+					light.color.setHSL( h, s, l );
+					light.position.set( x, y, z );
+					lensflare = new Lensflare();
+					lensflare.addElement( new LensflareElement( textureFlare0, 500, 0, light.color ) );
+					lensflare.addElement( new LensflareElement( textureFlare3, 60, 1 ) );
+					lensflare.addElement( new LensflareElement( textureFlare3, 70, 1 ) );
+					lensflare.addElement( new LensflareElement( textureFlare3, 120, 1 ) );
+					lensflare.addElement( new LensflareElement( textureFlare3, 70, 1 ) );
+					light.add( lensflare );
+					scene.add( light );
+				}
+
+				renderer = new THREE.WebGLRenderer( { antialias: true, alpha: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				container.appendChild( renderer.domElement );
+				renderer.gammaInput = true;
+				renderer.gammaOutput = true;
+				window.addEventListener( 'resize', onWindowResize, false );
+			}
+			function onWindowResize() {
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+			}
+			function onDocumentMouseMove( event ) {
+				mouseX = ( event.clientX - windowHalfX );
+				mouseY = ( event.clientY - windowHalfY );
+			}
+				
+				loader.load( 'fonts/helvetiker_bold.typeface.json', function ( font ) {
+					var xMid, text;
+					var color = 0xbbbbbb;
+					var matLite = new THREE.MeshBasicMaterial( {
+						color: color,
+						transparent: true,
+						opacity: 1,
+						side: THREE.DoubleSide
+					} );
+					var message = "steelconstruction";
+					var shapes = font.generateShapes( message, 100 );
+					var geometry = new THREE.ShapeBufferGeometry( shapes );
+					geometry.computeBoundingBox();
+					xMid = - 0.5 * ( geometry.boundingBox.max.x - geometry.boundingBox.min.x );
+					geometry.translate( xMid, 0, 0 );
+					// make shape ( N.B. edge view not visible )
+					text = new THREE.Mesh( geometry, matLite );
+					text.position.z = 1750;
+					text.position.y = 150;
+					text.position.x = -100;
+					text.scale.set(.5,.5,.5);
+					scene.add( text );
+
+					// - - - - 
+
+					var xMid_01, text_01;
+					var color_01 = 0xD91897;
+					var matLite_01 = new THREE.MeshLambertMaterial( {
+						emissive: color_01,
+					} );
+					var message_01 = ".online";
+					var shapes_01 = font.generateShapes( message_01, 100 );
+					var geometry_01 = new THREE.ShapeBufferGeometry( shapes_01 );
+					geometry_01.computeBoundingBox();
+					xMid_01 = - 0.5 * ( geometry_01.boundingBox.max.x - geometry_01.boundingBox.min.x );
+					geometry_01.translate( xMid_01, 0, 0 );
+					// make shape ( N.B. edge view not visible )
+					text_01 = new THREE.Mesh( geometry_01, matLite_01 );
+					text_01.position.z = 1750;
+					text_01.position.y = 150;
+					text_01.position.x = 300;
+					text_01.scale.set(.5,.5,.5);
+					scene.add( text_01 );
+				})
+
+				function fire_airspeed(){
+					var max_x = 300;
+					var min_x = -300;
+					var max_y = 200;
+					var min_y = 0;
+					var max_z = 500;
+					var min_z = -500;
+					var max_windx = 5;
+					var max_windy = 2;
+					var min_windx = 0;
+					var min_windy = 0;
+					var max_weld_time = 0.05;
+					var min_weld_time = 0.3;
+					var max_light_flash = 10;
+					var min_light_flash = 0;
+					fire.airSpeed += 0.1;
+					if (fire.airSpeed > 13) {
+						fire.airSpeed = 0;
+						setTimeout(move_fire, 500);
+			}
+					if (fire.airSpeed > 4) {
+						setTimeout(flash_on, 500);
+			}
+				firegroup.add(light, fire);
+				scene.add(firegroup);
+
+				firegroup.position.set(225,-50,100);
+				function move_fire(){
+					light.color.l = Math.floor(Math.random() * (max_light_flash - min_light_flash)) + min_light_flash;
+				counter ++;
+					fire.windX = Math.floor(Math.random() * (max_windx - max_windx)) + max_windx;
+					fire.windy = Math.floor(Math.random() * (max_windy - max_windy)) + max_windx;
+			}
+				if (counter == 1) {
+					firegroup.position.set(225,-50,100);
+				}
+				if (counter == 2) {
+					firegroup.position.set(140,-100,100);
+				}
+				if (counter == 3) {
+					firegroup.position.set(100,-50,0);
+				}
+				if (counter == 4) {
+					firegroup.position.set(-200,125,50);
+				}
+				if (counter == 5) {
+					firegroup.position.set(-400,200,200);
+				}
+				if (counter == 6) {
+					firegroup.position.set(-500,200,500);
+				}
+				if (counter == 7) {
+					firegroup.position.set(-350,150,1000);
+				}
+				if (counter == 8) {
+					firegroup.position.set(-200,-200,1200);
+				}
+				if (counter == 9) {
+					firegroup.position.set(125,-300,1300);
+				}
+				if (counter == 10) {
+					firegroup.position.set(100,-300,1400);
+				}
+		}
+
+			var counter_flash;
+			counter_flash = 0;
+
+			function flash_on(){
+				counter_flash ++;
+				if (counter_flash == 1) {
+					light.color.setHSL( 0, 0, 1 );
+				}
+				if (counter_flash == 2) {
+					light.color.setHSL( 0, 0, 1 );
+				}
+				if (counter_flash == 3) {
+					light.color.setHSL( 0, 0, 1 );
+				}
+				if (counter_flash == 4) {
+					light.color.setHSL( 0, 0, 0 );
+				}
+				if (counter_flash == 5) {
+					light.color.setHSL( 0, 0, 1 );
+				}
+				if (counter_flash == 6) {
+					light.color.setHSL( 0, 0, 0 );
+				}
+				if (counter_flash == 7) {
+					light.color.setHSL( 0, 0, 1 );
+				}
+				if (counter_flash == 8) {
+					light.color.setHSL( 0, 0, 1 );
+				}
+				if (counter_flash == 9) {
+					light.color.setHSL( 0, 0, 1 );
+				}
+				if (counter_flash == 10) {
+					light.color.setHSL( 0, 0, 0 );
+					counter_flash = 0;
+				}
+			}
+
+
+			function onDocumentTouchEnd(event) {
+			    event.preventDefault();
+
+			    mouseX = (event.changedTouches[0].clientX / window.innerWidth) * 2 - 1;
+
+			}
+
+			function animate() {
+				flash_counter = counter/10;
+				console.log(flash_counter);
+
+				setTimeout( fire_airspeed, 4000 );
+
+				camera.position.z += 2;
+				if (camera.position.z > 4500) {
+					$('div').fadeOut(1500);
+				}
+				if (camera.position.z > 6000) {
+					camera.position.z = 6000
+				}
+				requestAnimationFrame( animate );
+				render();
+				}
+			function render() {
+
+				camera.position.x += ( mouseX - camera.position.x ) * 0.01;
+				camera.lookAt( scene.position );
+
+				renderer.setClearColor( 0xffffff, 0);
+				var delta = clock.getDelta();
+				controls.update( delta );
+				renderer.render( scene, camera );
+			}
+		</script>
+
+	</body>
